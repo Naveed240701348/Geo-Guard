@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{userId} {
+      allow read, write: if request.auth.uid == userId;
+    }
+
+    match /land_parcels/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid))
+        .data.role == 'admin';
+    }
+
+    match /complaints/{docId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && (
+        resource.data.user_id == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid))
+        .data.role == 'admin'
+      );
+      allow update: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid))
+        .data.role == 'admin';
+    }
+  }
+}
