@@ -1,28 +1,46 @@
 const admin = require('firebase-admin');
+const fs = require('fs');
 const path = require('path');
 
-// Try to load service account key from multiple possible locations
-let serviceAccount;
+// Try environment variables first (for production)
+if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_PRIVATE_KEY) {
+  console.log('Using Firebase config from environment variables');
+  var serviceAccount = {
+    project_id: process.env.FIREBASE_PROJECT_ID,
+    client_email: process.env.FIREBASE_CLIENT_EMAIL,
+    private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    client_id: process.env.FIREBASE_CLIENT_ID
+  };
+} else {
+  // Fallback to service account key file (for development)
+  const possiblePaths = [
+    path.join(__dirname, '../../serviceAccountKey.json'),
+    path.join(__dirname, '../../../serviceAccountKey.json'),
+    'C:/Users/naveed sheriff j/OneDrive/Desktop/Geo_Guard/serviceAccountKey.json',
+    './serviceAccountKey.json',
+    '../serviceAccountKey.json'
+  ];
 
-const possiblePaths = [
-  path.join(__dirname, '../serviceAccountKey.json'),
-  path.join(__dirname, '../../serviceAccountKey.json'),
-  './serviceAccountKey.json',
-  'serviceAccountKey.json'
-];
-
-for (const servicePath of possiblePaths) {
-  try {
-    serviceAccount = require(servicePath);
-    break;
-  } catch (e) {
-    // Continue to next path
+  let keyPath = '';
+  for (const possiblePath of possiblePaths) {
+    try {
+      if (fs.existsSync(possiblePath)) {
+        serviceAccount = require(possiblePath);
+        keyPath = possiblePath;
+        break;
+      }
+    } catch (error) {
+      // Continue to next path
+    }
   }
-}
 
-if (!serviceAccount) {
-  console.error('Service account key not found. Please place serviceAccountKey.json in the project root or server directory.');
-  process.exit(1);
+  if (!serviceAccount) {
+    console.error('Service account key not found and environment variables not set');
+    console.error('Set FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, etc. in environment variables');
+    process.exit(1);
+  }
+
+  console.log('Using service account key from:', keyPath);
 }
 
 admin.initializeApp({
