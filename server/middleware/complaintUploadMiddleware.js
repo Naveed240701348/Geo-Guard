@@ -10,7 +10,7 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  console.log('File filter checking:', {
+  console.log('Complaint photo filter checking:', {
     originalname: file.originalname,
     mimetype: file.mimetype,
     fieldname: file.fieldname
@@ -19,17 +19,18 @@ const fileFilter = (req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase();
   console.log('File extension:', ext);
   
-  if (['.csv','.jpg','.jpeg','.png'].includes(ext)) {
-    console.log('File accepted');
+  // Allow common image formats for complaint photos
+  if (['.jpg','.jpeg','.png','.gif','.webp'].includes(ext)) {
+    console.log('Photo file accepted');
     cb(null, true);
   } else {
-    console.log('File rejected - only CSV and image files allowed');
-    cb(new Error('Only CSV and image files allowed'));
+    console.log('Photo file rejected - only image files allowed');
+    cb(new Error('Only image files allowed for complaint photos'));
   }
 };
 
 module.exports = multer({ 
   storage, 
   fileFilter,
-  limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit for large CSV files
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit for photos
 });

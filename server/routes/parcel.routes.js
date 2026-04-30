@@ -5,6 +5,7 @@ const auth       = require('../middleware/authMiddleware');
 const upload     = require('../middleware/uploadMiddleware');
 
 router.post('/upload-csv', auth, upload.single('csvFile'), controller.uploadCSV);
+router.post('/migrate', auth, controller.migrateParcels);
 router.get('/',            controller.getAllParcels);
 router.get('/:surveyNo',   controller.getParcelBySurveyNo);
 router.post('/',      auth, controller.addParcel);

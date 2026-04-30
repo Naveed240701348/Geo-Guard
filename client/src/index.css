@@ -1,3 +1,5 @@
+@import url('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -15,4 +17,50 @@ body {
 
 .leaflet-container {
   background: #080f1a;
+  height: 100%;
+  width: 100%;
+}
+
+.leaflet-control-container {
+  font-family: 'Syne', sans-serif;
+}
+
+/* Fix for map container height */
+.map-container {
+  height: 100%;
+  min-height: 400px;
+}
+
+/* Dark theme for Leaflet controls */
+.leaflet-bar a {
+  background-color: #1a2332 !important;
+  color: #ffffff !important;
+  border-color: #2a3442 !important;
+}
+
+.leaflet-bar a:hover {
+  background-color: #2a3442 !important;
+}
+
+.leaflet-control-attribution {
+  background-color: #1a2332 !important;
+  color: #ffffff !important;
+}
+
+/* User location marker styling */
+.user-location-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-location-marker .animate-ping {
+  animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes ping {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
 }

@@ -8,6 +8,8 @@ export default function CSVImport() {
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState(null);
   const [dragActive, setDragActive] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
+  const [processingStage, setProcessingStage] = useState('');
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -63,33 +65,67 @@ export default function CSVImport() {
   const handleUpload = async () => {
     if (!file) return;
 
+    console.log('Starting CSV upload:', {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type
+    });
+
     setUploading(true);
+    setUploadProgress('Starting upload...');
+    setProcessingStage('Initializing');
     const formData = new FormData();
     formData.append('csvFile', file);
 
     try {
+      console.log('Sending request to /parcels/upload-csv');
+      setProcessingStage('Uploading file to server...');
+      
       const response = await axios.post('/parcels/upload-csv', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
+        // Increase timeout for large files (5 minutes)
+        timeout: 300000,
       });
       
+      console.log('Upload response:', response.data);
+      setProcessingStage('Processing complete!');
+      setUploadProgress('Successfully processed CSV file');
       setResult(response.data);
       setFile(null);
       setPreview([]);
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Upload failed. Please check your file format and try again.');
+      console.error('Error response:', error.response?.data);
+      setProcessingStage('Error occurred');
+      setUploadProgress('');
+      
+      let errorMessage = 'Unknown error occurred';
+      if (error.code === 'ECONNABORTED') {
+        errorMessage = 'Upload timed out. Please try with a smaller file or check your internet connection.';
+      } else if (error.response?.status === 413) {
+        errorMessage = 'File too large. Maximum file size is 50MB.';
+      } else {
+        errorMessage = error.response?.data?.message || error.message;
+      }
+      
+      alert(`Upload failed: ${errorMessage}`);
     } finally {
       setUploading(false);
+      setTimeout(() => {
+        setUploadProgress('');
+        setProcessingStage('');
+      }, 3000);
     }
   };
 
   const downloadTemplate = () => {
-    const template = `survey_no,sub_division,land_type,centroid_lat,centroid_lng,area_acres
-1,1A,private,12.9721,80.1512,0.45
-2,1B,private,12.9715,80.1498,0.30
-5,2A,government,12.9698,80.1478,2.10`;
+    const template = `survey_number,sub_division,area_acres,district,taluk,village,land_type,status,latitude,longitude
+1,1A,0.45,Chengalpattu,Pallavaram,Zamin Pallavaram,private,active,12.9721,80.1512
+2,1B,0.30,Chengalpattu,Pallavaram,Zamin Pallavaram,private,encroached,12.9715,80.1498
+3,2A,2.10,Chengalpattu,Pallavaram,Zamin Pallavaram,government,disputed,12.9698,80.1478
+4,3A,1.25,Chengalpattu,Pallavaram,Zamin Pallavaram,poramboke,under_litigation,12.9685,80.1456`;
     
     const blob = new Blob([template], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -153,14 +189,86 @@ export default function CSVImport() {
               <div className="flex-1">
                 <h3 className="text-lg font-semibold text-white mb-2">Fill CSV Data</h3>
                 <p className="text-muted mb-3">
-                  Fill the downloaded template with your land parcel information.
+                  Fill the downloaded template with your land parcel information. All fields are mandatory.
                 </p>
-                <ol className="text-sm text-muted space-y-1 mb-3">
-                  <li>1. Download the CSV template</li>
-                  <li>2. Fill in survey numbers and subdivision codes</li>
-                  <li>3. Add coordinates and land types</li>
-                  <li>4. Save as CSV file</li>
-                </ol>
+                
+                <div className="bg-bg rounded-lg p-4 mb-4 border border-border">
+                  <h4 className="text-sm font-semibold text-white mb-3">Required Fields:</h4>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 bg-primary rounded-full"></span>
+                        <span className="text-muted">survey_number</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 bg-primary rounded-full"></span>
+                        <span className="text-muted">sub_division</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 bg-primary rounded-full"></span>
+                        <span className="text-muted">area_acres</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 bg-primary rounded-full"></span>
+                        <span className="text-muted">district</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 bg-primary rounded-full"></span>
+                        <span className="text-muted">taluk</span>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 bg-primary rounded-full"></span>
+                        <span className="text-muted">village</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 bg-primary rounded-full"></span>
+                        <span className="text-muted">land_type</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 bg-primary rounded-full"></span>
+                        <span className="text-muted">status</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 bg-primary rounded-full"></span>
+                        <span className="text-muted">latitude</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 bg-primary rounded-full"></span>
+                        <span className="text-muted">longitude</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <h5 className="text-sm font-semibold text-white mb-2">Valid Values:</h5>
+                    <div className="text-xs text-muted space-y-1">
+                      <div><span className="text-info">land_type:</span> private, government, poramboke, forest</div>
+                      <div><span className="text-info">status:</span> active, encroached, disputed, under_litigation</div>
+                      <div className="mt-2 p-2 bg-info/10 rounded">
+                        <div className="text-info font-medium mb-1">Auto-mapped variations:</div>
+                        <div className="text-xs space-y-1">
+                          <div>• "clear", "government", "private" → active</div>
+                          <div>• "encroachment" → encroached</div>
+                          <div>• "dispute" → disputed</div>
+                          <div>• "litigation", "under litigation" → under_litigation</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <ol className="text-sm text-muted space-y-1">
+                    <li>1. Download the CSV template below</li>
+                    <li>2. Fill in all 10 mandatory fields for each parcel</li>
+                    <li>3. Ensure coordinates are in decimal degrees format</li>
+                    <li>4. Use valid land_type and status values</li>
+                    <li>5. Save as CSV file (UTF-8 encoding)</li>
+                  </ol>
+                </div>
+                
                 <a 
                   href="https://bhunaksha.nic.in" 
                   target="_blank" 
@@ -207,20 +315,36 @@ export default function CSVImport() {
                 <span className="text-primary">required</span>
               </div>
               <div className="flex justify-between">
+                <span className="text-muted">area_acres</span>
+                <span className="text-primary">required</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">district</span>
+                <span className="text-primary">required</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">taluk</span>
+                <span className="text-primary">required</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">village</span>
+                <span className="text-primary">required</span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-muted">land_type</span>
                 <span className="text-primary">required</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted">centroid_lat</span>
+                <span className="text-muted">status</span>
                 <span className="text-primary">required</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted">centroid_lng</span>
+                <span className="text-muted">latitude</span>
                 <span className="text-primary">required</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted">area_acres</span>
-                <span className="text-muted">optional</span>
+                <span className="text-muted">longitude</span>
+                <span className="text-primary">required</span>
               </div>
             </div>
           </div>
@@ -250,9 +374,21 @@ export default function CSVImport() {
             </p>
             
             {file && (
-              <p className="text-sm text-muted mb-4">
-                Size: {(file.size / 1024 / 1024).toFixed(2)} MB
-              </p>
+              <>
+                <p className="text-sm text-muted mb-2">
+                  Size: {(file.size / 1024 / 1024).toFixed(2)} MB
+                </p>
+                {file.size > 10 * 1024 * 1024 && (
+                  <div className="text-xs text-warning mb-2 p-2 bg-warning/10 rounded">
+                    ⚠️ Large file detected. Processing may take several minutes.
+                  </div>
+                )}
+                {file.size > 40 * 1024 * 1024 && (
+                  <div className="text-xs text-danger mb-4 p-2 bg-danger/10 rounded">
+                    ⚠️ Very large file. Consider splitting into smaller files for better performance.
+                  </div>
+                )}
+              </>
             )}
             
             <input
@@ -275,6 +411,21 @@ export default function CSVImport() {
           {preview.length > 0 && (
             <div className="mt-6">
               <h4 className="text-sm font-medium text-muted mb-2">Preview (First 5 rows)</h4>
+              
+              {/* Field Detection Feedback */}
+              <div className="mb-4 p-3 bg-bg rounded-lg border border-border">
+                <div className="text-sm">
+                  <div className="text-info font-medium mb-2">Detected Fields:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.keys(preview[0]).map(key => (
+                      <span key={key} className="text-xs bg-primary/20 text-primary px-2 py-1 rounded">
+                        {key}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -312,6 +463,23 @@ export default function CSVImport() {
               >
                 {uploading ? 'Processing CSV & Mapping Parcels...' : 'Upload CSV'}
               </button>
+              
+              {uploading && (
+                <div className="mt-4 p-4 bg-bg rounded-lg border border-border">
+                  <div className="flex items-center mb-2">
+                    <div className="w-4 h-4 bg-primary rounded-full animate-pulse mr-3"></div>
+                    <span className="text-white font-medium">{processingStage}</span>
+                  </div>
+                  {uploadProgress && (
+                    <div className="text-sm text-muted">
+                      {uploadProgress}
+                    </div>
+                  )}
+                  <div className="text-xs text-muted mt-2">
+                    Large files may take several minutes to process. Please keep this tab open.
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

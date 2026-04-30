@@ -3,18 +3,50 @@ import { MapContainer, TileLayer, Polygon, CircleMarker, Marker, Popup, useMap }
 import { LatLngBounds } from 'leaflet';
 import axios from '../api/axios';
 
-function MapBounds({ parcels }) {
+function MapBounds({ parcels, userInteracting }) {
   const map = useMap();
   
   useEffect(() => {
-    if (parcels.length > 0) {
+    // Only auto-fit bounds if user is not interacting and parcels are loaded
+    if (parcels.length > 0 && !userInteracting) {
       const bounds = new LatLngBounds();
       parcels.forEach(parcel => {
-        bounds.extend([parcel.centroid_lat, parcel.centroid_lng]);
+        const lat = parseFloat(parcel.centroid_lat);
+        const lng = parseFloat(parcel.centroid_lng);
+        
+        // Validate centroid coordinates
+        if (!isNaN(lat) && !isNaN(lng) && 
+            lat >= -90 && lat <= 90 && 
+            lng >= -180 && lng <= 180) {
+          bounds.extend([lat, lng]);
+        } else {
+          console.warn('Invalid centroid coordinates:', { parcel: parcel.id, lat, lng });
+        }
       });
-      map.fitBounds(bounds, { padding: [50, 50] });
+      
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [50, 50] });
+      }
     }
-  }, [parcels, map]);
+  }, [parcels, map, userInteracting]);
+
+  return null;
+}
+
+function ParcelZoom({ selectedParcel }) {
+  const map = useMap();
+  
+  useEffect(() => {
+    if (selectedParcel && selectedParcel.centroid_lat && selectedParcel.centroid_lng) {
+      const lat = parseFloat(selectedParcel.centroid_lat);
+      const lng = parseFloat(selectedParcel.centroid_lng);
+      
+      if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        console.log('Zooming to selected parcel:', selectedParcel.survey_no, [lat, lng]);
+        map.setView([lat, lng], 16); // Zoom to level 16 for better detail
+      }
+    }
+  }, [selectedParcel, map]);
 
   return null;
 }
@@ -35,9 +67,60 @@ export default function MapPage() {
   const [complaints, setComplaints] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [userInteracting, setUserInteracting] = useState(false);
+  const [userLocation, setUserLocation] = useState(null);
+  const [locationLoading, setLocationLoading] = useState(false);
 
   // Filter parcels based on search term
-  const filteredParcels = parcels.filter(parcel => {
+  // Clean and validate parcel data
+  const cleanParcels = parcels.map(parcel => {
+    const cleaned = { ...parcel };
+    
+    // Clean centroid coordinates
+    if (cleaned.centroid_lat) {
+      cleaned.centroid_lat = parseFloat(cleaned.centroid_lat);
+      if (isNaN(cleaned.centroid_lat) || cleaned.centroid_lat < -90 || cleaned.centroid_lat > 90) {
+        console.warn('Invalid centroid_lat for parcel:', parcel.id, cleaned.centroid_lat);
+        delete cleaned.centroid_lat;
+      }
+    }
+    
+    if (cleaned.centroid_lng) {
+      cleaned.centroid_lng = parseFloat(cleaned.centroid_lng);
+      if (isNaN(cleaned.centroid_lng) || cleaned.centroid_lng < -180 || cleaned.centroid_lng > 180) {
+        console.warn('Invalid centroid_lng for parcel:', parcel.id, cleaned.centroid_lng);
+        delete cleaned.centroid_lng;
+      }
+    }
+    
+    return cleaned;
+  });
+
+  // Check for overlapping parcels (for debugging)
+  const checkOverlaps = (parcels) => {
+    let overlapCount = 0;
+    parcels.forEach((parcel1, i) => {
+      parcels.forEach((parcel2, j) => {
+        if (i < j && parcel1.centroid_lat && parcel1.centroid_lng && parcel2.centroid_lat && parcel2.centroid_lng) {
+          const distance = Math.sqrt(
+            Math.pow(parcel1.centroid_lat - parcel2.centroid_lat, 2) + 
+            Math.pow(parcel1.centroid_lng - parcel2.centroid_lng, 2)
+          );
+          if (distance < 0.001) { // Very close parcels
+            console.warn(`Potential overlap: ${parcel1.survey_no} and ${parcel2.survey_no} are ${distance.toFixed(6)} degrees apart`);
+            overlapCount++;
+          }
+        }
+      });
+    });
+    if (overlapCount > 0) {
+      console.log(`Found ${overlapCount} potential parcel overlaps`);
+    }
+  };
+
+  checkOverlaps(cleanParcels);
+
+  const filteredParcels = cleanParcels.filter(parcel => {
     if (!searchTerm) return true;
     const searchLower = searchTerm.toLowerCase();
     return parcel.survey_no.toLowerCase().includes(searchLower) ||
@@ -49,9 +132,15 @@ export default function MapPage() {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    console.log('User location state changed:', userLocation);
+  }, [userLocation]);
+
   const fetchData = async () => {
     try {
       console.log('Fetching map data...');
+      console.log('API base URL:', import.meta.env.VITE_API_URL || 'http://localhost:5000');
+      
       const [parcelsRes, complaintsRes] = await Promise.all([
         axios.get('/parcels'),
         axios.get('/complaints')
@@ -65,6 +154,7 @@ export default function MapPage() {
       setComplaints(complaintsRes.data);
     } catch (error) {
       console.error('Error fetching map data:', error);
+      console.error('Error details:', error.response?.data || error.message);
     } finally {
       setLoading(false);
     }
@@ -94,6 +184,91 @@ export default function MapPage() {
     return (status === 'encroached' || status === 'disputed') ? "6 3" : null;
   };
 
+  const handleDownloadReport = () => {
+    if (!selectedParcel) return;
+    
+    // Create report content
+    const reportContent = `
+LAND PARCEL REPORT
+==================
+
+Survey Number: ${selectedParcel.survey_number || selectedParcel.survey_no}
+Sub Division: ${selectedParcel.sub_division}
+Area: ${selectedParcel.area_acres} acres
+District: ${selectedParcel.district}
+Taluk: ${selectedParcel.taluk}
+Village: ${selectedParcel.village}
+Land Type: ${selectedParcel.land_type}
+Status: ${selectedParcel.status}
+
+Location Details:
+Latitude: ${selectedParcel.centroid_lat}
+Longitude: ${selectedParcel.centroid_lng}
+
+Generated on: ${new Date().toLocaleString()}
+Generated by: GeoGuard System
+    `.trim();
+
+    // Create and download file
+    const blob = new Blob([reportContent], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `parcel_report_${selectedParcel.survey_number || selectedParcel.survey_no}_${Date.now()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const getCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser');
+      return;
+    }
+
+    console.log('Getting current location...');
+    setLocationLoading(true);
+    
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        const location = { lat: latitude, lng: longitude };
+        console.log('Location received:', location);
+        setUserLocation(location);
+        setLocationLoading(false);
+        
+        // Optional: Center map on user's location
+        if (window.mapRef) {
+          window.mapRef.flyTo([latitude, longitude], 16);
+        }
+      },
+      (error) => {
+        console.error('Error getting location:', error);
+        setLocationLoading(false);
+        
+        let errorMessage = 'Unable to get your location';
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = 'Location access denied. Please enable location permissions.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = 'Location information unavailable.';
+            break;
+          case error.TIMEOUT:
+            errorMessage = 'Location request timed out.';
+            break;
+        }
+        alert(errorMessage);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    );
+  };
+
   const getParcelBorderWeight = (status) => {
     return (status === 'encroached' || status === 'disputed') ? 2.5 : 1.5;
   };
@@ -107,6 +282,17 @@ export default function MapPage() {
 
   const handleParcelClick = (parcel) => {
     setSelectedParcel(parcel);
+    
+    // Zoom to parcel when clicked
+    if (parcel.centroid_lat && parcel.centroid_lng) {
+      const lat = parseFloat(parcel.centroid_lat);
+      const lng = parseFloat(parcel.centroid_lng);
+      
+      if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        // This will be handled by a custom component
+        console.log('Zooming to parcel:', parcel.survey_no, [lat, lng]);
+      }
+    }
   };
 
   const baseMapLayers = {
@@ -127,7 +313,10 @@ export default function MapPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
-        <div className="text-primary text-xl">Loading map...</div>
+        <div className="text-center">
+          <div className="text-primary text-xl mb-2">Loading map...</div>
+          <div className="text-muted text-sm">Checking server connection...</div>
+        </div>
       </div>
     );
   }
@@ -147,7 +336,7 @@ export default function MapPage() {
         </div>
 
         {/* Search */}
-        <div className="mb-6">
+        <div className="mb-4">
           <input
             type="text"
             placeholder="Search by survey number, subdivision, or land type..."
@@ -155,6 +344,33 @@ export default function MapPage() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full px-4 py-2 bg-bg border border-border rounded-lg text-white placeholder-muted focus:outline-none focus:border-primary"
           />
+        </div>
+
+        {/* Location Button */}
+        <div className="mb-6">
+          <button
+            onClick={getCurrentLocation}
+            disabled={locationLoading}
+            className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+          >
+            {locationLoading ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Getting Location...
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                Get My Location
+              </>
+            )}
+          </button>
         </div>
 
         {/* Base Map Toggle */}
@@ -259,18 +475,38 @@ export default function MapPage() {
           zoom={14}
           className="h-full"
           onclick={handleMapClick}
+          onmovestart={() => setUserInteracting(true)}
+          onmoveend={() => {
+            setTimeout(() => setUserInteracting(false), 1000); // Reset after 1 second
+          }}
+          onzoomstart={() => setUserInteracting(true)}
+          onzoomend={() => {
+            setTimeout(() => setUserInteracting(false), 1000); // Reset after 1 second
+          }}
+          whenCreated={(mapInstance) => {
+            window.mapRef = mapInstance;
+          }}
         >
           <TileLayer
             url={baseMapLayers[baseMap].url}
             attribution={baseMapLayers[baseMap].attribution}
+            error={(e) => {
+              console.error('Tile layer error:', e);
+              console.log('Attempting fallback tile layer...');
+            }}
           />
           
-          {/* Test marker to verify map is working */}
-          <Marker position={[12.9675, 80.1491]}>
-            <Popup>
-              Test Marker - Map is working!
-            </Popup>
-          </Marker>
+          {/* Fallback tile layer */}
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution="© OpenStreetMap"
+            opacity={0}
+            eventHandlers={{
+              tileerror: (e) => {
+                console.error('Fallback tile layer error:', e);
+              }
+            }}
+          />
           
           {layers.bhuvanWMS && (
             <TileLayer
@@ -323,8 +559,27 @@ export default function MapPage() {
                 return null;
               }
               
-              const positions = geojson.coordinates[0].map(coord => [coord[1], coord[0]]);
+              const positions = geojson.coordinates[0].map(coord => {
+                const lat = parseFloat(coord[1]);
+                const lng = parseFloat(coord[0]);
+                
+                // Validate coordinates
+                if (isNaN(lat) || isNaN(lng) || 
+                    lat < -90 || lat > 90 || 
+                    lng < -180 || lng > 180) {
+                  console.error(`Invalid coordinates for parcel ${index}:`, { lat, lng, original: coord });
+                  return null;
+                }
+                
+                return [lat, lng];
+              }).filter(pos => pos !== null); // Filter out invalid coordinates
+              
               console.log(`Final positions for parcel ${index}:`, positions);
+              
+              if (positions.length === 0) {
+                console.error(`No valid coordinates for parcel ${index}`);
+                return null;
+              }
               
               return (
                 <Polygon
@@ -332,10 +587,12 @@ export default function MapPage() {
                   positions={positions}
                   pathOptions={{
                     fillColor: getParcelColor(parcel.land_type),
-                    fillOpacity: 0.3,
+                    fillOpacity: 0.2, // Reduced from 0.3 to 0.2
                     color: getParcelBorderColor(parcel.status),
                     dashArray: getParcelBorderDash(parcel.status),
-                    weight: getParcelBorderWeight(parcel.status)
+                    weight: getParcelBorderWeight(parcel.status),
+                    stroke: true,
+                    fill: true
                   }}
                   eventHandlers={{
                     click: () => handleParcelClick(parcel)
@@ -361,7 +618,23 @@ export default function MapPage() {
             />
           ))}
 
-          <MapBounds parcels={parcels} />
+          <MapBounds parcels={cleanParcels} userInteracting={userInteracting} />
+          <ParcelZoom selectedParcel={selectedParcel} />
+          
+          {/* User Location Marker */}
+          {userLocation && (
+            <Marker 
+              key="user-location"
+              position={[userLocation.lat, userLocation.lng]}
+            >
+              <div className="user-location-marker">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-blue-500 rounded-full animate-ping"></div>
+                  <div className="relative bg-blue-500 rounded-full w-4 h-4 border-2 border-white shadow-lg"></div>
+                </div>
+              </div>
+            </Marker>
+          )}
         </MapContainer>
 
         {/* Coordinate Bar */}
@@ -399,27 +672,11 @@ export default function MapPage() {
           <div className="space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted">Survey No:</span>
-              <span className="text-white">{selectedParcel.survey_no}</span>
+              <span className="text-white">{selectedParcel.survey_number || selectedParcel.survey_no}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted">Sub Division:</span>
               <span className="text-white">{selectedParcel.sub_division}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted">ULPIN:</span>
-              <span className="text-white">{selectedParcel.ulpin}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted">Village LGD Code:</span>
-              <span className="text-white">{selectedParcel.village_lgd_code}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted">Patta No:</span>
-              <span className="text-white">{selectedParcel.patta_no}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted">Owner Name:</span>
-              <span className="text-white">{selectedParcel.owner_name}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted">Area:</span>
@@ -455,15 +712,10 @@ export default function MapPage() {
           </div>
 
           <div className="mt-6 space-y-2">
-            <button className="w-full py-2 bg-info text-white rounded hover:bg-info/90 transition-colors">
-              Fly to Parcel
-            </button>
-            {selectedParcel.status === 'encroached' && (
-              <button className="w-full py-2 bg-danger text-white rounded hover:bg-danger/90 transition-colors">
-                Raise Alert
-              </button>
-            )}
-            <button className="w-full py-2 bg-panel text-white border border-border rounded hover:bg-panel/90 transition-colors">
+            <button 
+              onClick={handleDownloadReport}
+              className="w-full py-2 bg-panel text-white border border-border rounded hover:bg-panel/90 transition-colors"
+            >
               Download Report
             </button>
           </div>

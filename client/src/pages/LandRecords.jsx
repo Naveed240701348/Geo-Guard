@@ -17,16 +17,12 @@ export default function LandRecords() {
   const [formData, setFormData] = useState({
     survey_no: '',
     sub_division: '',
-    ulpin: '',
-    village_lgd_code: '',
-    patta_no: '',
-    owner_name: '',
     area_acres: '',
     district: '',
     taluk: '',
     village: '',
     land_type: 'private',
-    status: 'clear',
+    status: 'active',
     centroid_lat: '',
     centroid_lng: ''
   });
@@ -48,28 +44,42 @@ export default function LandRecords() {
 
   const filteredParcels = parcels.filter(parcel => {
     const matchesSearch = !searchTerm || 
-      parcel.survey_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (parcel.survey_number || parcel.survey_no).toLowerCase().includes(searchTerm.toLowerCase()) ||
       parcel.sub_division.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      parcel.land_type.toLowerCase().includes(searchTerm.toLowerCase());
+      parcel.district.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      parcel.taluk.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      parcel.village.toLowerCase().includes(searchTerm.toLowerCase());
+    
     const matchesDistrict = !filters.district || parcel.district === filters.district;
     const matchesTaluk = !filters.taluk || parcel.taluk === filters.taluk;
     const matchesLandType = !filters.landType || parcel.land_type === filters.landType;
     const matchesStatus = !filters.status || parcel.status === filters.status;
-
+    
     const shouldShow = matchesSearch && matchesDistrict && matchesTaluk && matchesLandType && matchesStatus;
-    if (searchTerm && parcel.survey_no.includes(searchTerm)) {
-      console.log('Search match:', { searchTerm, parcel: parcel.survey_no, shouldShow });
-    }
     return shouldShow;
   });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      // Map form field names to backend field names
+      const submissionData = {
+        survey_number: formData.survey_no,
+        sub_division: formData.sub_division,
+        area_acres: formData.area_acres,
+        district: formData.district,
+        taluk: formData.taluk,
+        village: formData.village,
+        land_type: formData.land_type,
+        status: formData.status,
+        centroid_lat: formData.centroid_lat,
+        centroid_lng: formData.centroid_lng
+      };
+      
       if (editingParcel) {
-        await axios.put(`/parcels/${editingParcel.id}`, formData);
+        await axios.put(`/parcels/${editingParcel.id}`, submissionData);
       } else {
-        await axios.post('/parcels', formData);
+        await axios.post('/parcels', submissionData);
       }
       
       fetchParcels();
@@ -83,7 +93,18 @@ export default function LandRecords() {
 
   const handleEdit = (parcel) => {
     setEditingParcel(parcel);
-    setFormData(parcel);
+    setFormData({
+      survey_no: parcel.survey_number || parcel.survey_no || '',
+      sub_division: parcel.sub_division || '',
+      area_acres: parcel.area_acres || '',
+      district: parcel.district || '',
+      taluk: parcel.taluk || '',
+      village: parcel.village || '',
+      land_type: parcel.land_type || 'private',
+      status: parcel.status || 'active',
+      centroid_lat: parcel.latitude || parcel.centroid_lat || '',
+      centroid_lng: parcel.longitude || parcel.centroid_lng || ''
+    });
     setShowModal(true);
   };
 
@@ -220,7 +241,6 @@ export default function LandRecords() {
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 text-muted font-medium">Survey No</th>
                   <th className="text-left py-3 px-4 text-muted font-medium">Sub Div</th>
-                  <th className="text-left py-3 px-4 text-muted font-medium">Owner</th>
                   <th className="text-left py-3 px-4 text-muted font-medium">District</th>
                   <th className="text-left py-3 px-4 text-muted font-medium">Taluk</th>
                   <th className="text-left py-3 px-4 text-muted font-medium">Village</th>
@@ -232,9 +252,8 @@ export default function LandRecords() {
               <tbody>
                 {filteredParcels.map(parcel => (
                   <tr key={parcel.id} className="border-b border-border">
-                    <td className="py-3 px-4 text-white">{parcel.survey_no}</td>
+                    <td className="py-3 px-4 text-white">{parcel.survey_number || parcel.survey_no}</td>
                     <td className="py-3 px-4 text-white">{parcel.sub_division}</td>
-                    <td className="py-3 px-4 text-white">{parcel.owner_name}</td>
                     <td className="py-3 px-4 text-white">{parcel.district}</td>
                     <td className="py-3 px-4 text-white">{parcel.taluk}</td>
                     <td className="py-3 px-4 text-white">{parcel.village}</td>
@@ -250,7 +269,7 @@ export default function LandRecords() {
                     </td>
                     <td className="py-3 px-4">
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        parcel.status === 'clear' ? 'bg-primary/20 text-primary' :
+                        parcel.status === 'active' ? 'bg-primary/20 text-primary' :
                         parcel.status === 'encroached' ? 'bg-danger/20 text-danger' :
                         parcel.status === 'disputed' ? 'bg-warning/20 text-warning' :
                         'bg-info/20 text-info'
@@ -262,13 +281,13 @@ export default function LandRecords() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleEdit(parcel)}
-                          className="text-info hover:underline"
+                          className="px-3 py-1 bg-primary text-white rounded hover:bg-primary/90 transition-colors text-sm"
                         >
                           Edit
                         </button>
                         <button
                           onClick={() => handleDelete(parcel.id)}
-                          className="text-danger hover:underline"
+                          className="px-3 py-1 bg-danger text-white rounded hover:bg-danger/90 transition-colors text-sm"
                         >
                           Delete
                         </button>
@@ -314,46 +333,6 @@ export default function LandRecords() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-muted mb-2">ULPIN</label>
-                  <input
-                    type="text"
-                    value={formData.ulpin}
-                    onChange={(e) => setFormData({...formData, ulpin: e.target.value})}
-                    className="w-full px-4 py-2 bg-bg border border-border rounded-lg text-white focus:outline-none focus:border-primary"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-muted mb-2">Village LGD Code</label>
-                  <input
-                    type="text"
-                    value={formData.village_lgd_code}
-                    onChange={(e) => setFormData({...formData, village_lgd_code: e.target.value})}
-                    className="w-full px-4 py-2 bg-bg border border-border rounded-lg text-white focus:outline-none focus:border-primary"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-muted mb-2">Patta Number</label>
-                  <input
-                    type="text"
-                    value={formData.patta_no}
-                    onChange={(e) => setFormData({...formData, patta_no: e.target.value})}
-                    className="w-full px-4 py-2 bg-bg border border-border rounded-lg text-white focus:outline-none focus:border-primary"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-muted mb-2">Owner Name</label>
-                  <input
-                    type="text"
-                    value={formData.owner_name}
-                    onChange={(e) => setFormData({...formData, owner_name: e.target.value})}
-                    className="w-full px-4 py-2 bg-bg border border-border rounded-lg text-white focus:outline-none focus:border-primary"
-                  />
-                </div>
-
-                <div>
                   <label className="block text-sm font-medium text-muted mb-2">Area (Acres)</label>
                   <input
                     type="number"
@@ -361,6 +340,7 @@ export default function LandRecords() {
                     value={formData.area_acres}
                     onChange={(e) => setFormData({...formData, area_acres: e.target.value})}
                     className="w-full px-4 py-2 bg-bg border border-border rounded-lg text-white focus:outline-none focus:border-primary"
+                    required
                   />
                 </div>
 
@@ -371,7 +351,6 @@ export default function LandRecords() {
                     value={formData.district}
                     onChange={(e) => setFormData({...formData, district: e.target.value})}
                     className="w-full px-4 py-2 bg-bg border border-border rounded-lg text-white focus:outline-none focus:border-primary"
-                    required
                   />
                 </div>
 
@@ -395,34 +374,6 @@ export default function LandRecords() {
                     className="w-full px-4 py-2 bg-bg border border-border rounded-lg text-white focus:outline-none focus:border-primary"
                     required
                   />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-muted mb-2">Land Type</label>
-                  <select
-                    value={formData.land_type}
-                    onChange={(e) => setFormData({...formData, land_type: e.target.value})}
-                    className="w-full px-4 py-2 bg-bg border border-border rounded-lg text-white focus:outline-none focus:border-primary"
-                  >
-                    <option value="private">Private</option>
-                    <option value="government">Government</option>
-                    <option value="poramboke">Poramboke</option>
-                    <option value="forest">Forest</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-muted mb-2">Status</label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({...formData, status: e.target.value})}
-                    className="w-full px-4 py-2 bg-bg border border-border rounded-lg text-white focus:outline-none focus:border-primary"
-                  >
-                    <option value="clear">Clear</option>
-                    <option value="encroached">Encroached</option>
-                    <option value="disputed">Disputed</option>
-                    <option value="government">Government</option>
-                  </select>
                 </div>
 
                 <div>

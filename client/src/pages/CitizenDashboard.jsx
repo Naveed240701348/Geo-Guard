@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { auth } from '../firebase/auth';
 import axios from '../api/axios';
 
 export default function CitizenDashboard() {
@@ -16,6 +17,8 @@ export default function CitizenDashboard() {
     lng: 80.1491,
     photo: null
   });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filter, setFilter] = useState('all');
 
   useEffect(() => {
     fetchData();
@@ -23,41 +26,69 @@ export default function CitizenDashboard() {
 
   const fetchData = async () => {
     try {
+      console.log('=== Citizen Dashboard Data Fetch ===');
+      
       const [parcelsRes, complaintsRes] = await Promise.all([
         axios.get('/parcels'),
         axios.get('/complaints/mine')
       ]);
       
+      console.log('Parcels response:', parcelsRes.data.length, 'parcels');
+      console.log('Complaints response:', complaintsRes.data.length, 'complaints');
+      console.log('Complaints data:', complaintsRes.data);
+      
       setParcels(parcelsRes.data);
       setComplaints(complaintsRes.data);
+      
+      console.log('State updated - complaints:', complaintsRes.data.length);
     } catch (error) {
       console.error('Error fetching data:', error);
+      console.error('Error response:', error.response?.data);
     } finally {
       setLoading(false);
     }
   };
 
+  
   const handleSubmitComplaint = async (e) => {
     e.preventDefault();
     
+    console.log('=== User Authentication Check ===');
+    console.log('Profile:', profile);
+    console.log('User from auth:', auth.currentUser);
+    
     if (!profile) {
+      console.log('No profile found - user not logged in');
       alert('Please log in to file a complaint');
       return;
     }
     
-    console.log('Submitting complaint...');
+    if (!auth.currentUser) {
+      console.log('No current user found');
+      alert('Please log in to file a complaint');
+      return;
+    }
+
+    console.log('=== Complaint Form Debug ===');
+    console.log('Form data:', complaintForm);
     console.log('User profile:', profile);
-    
+
+    setLoading(true);
+    const formData = new FormData();
+    formData.append('survey_no', complaintForm.survey_no);
+    formData.append('description', complaintForm.description);
+    formData.append('lat', complaintForm.lat);
+    formData.append('lng', complaintForm.lng);
+    if (complaintForm.photo) {
+      formData.append('photo', complaintForm.photo);
+    }
+
+    console.log('FormData contents:');
+    for (let [key, value] of formData.entries()) {
+      console.log(`${key}:`, value);
+    }
+
     try {
-      const formData = new FormData();
-      formData.append('survey_no', complaintForm.survey_no);
-      formData.append('description', complaintForm.description);
-      formData.append('lat', complaintForm.lat);
-      formData.append('lng', complaintForm.lng);
-      if (complaintForm.photo) {
-        formData.append('photo', complaintForm.photo);
-      }
-      
       console.log('Sending request to /complaints');
       const response = await axios.post('/complaints', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -83,6 +114,39 @@ export default function CitizenDashboard() {
   const myParcels = parcels.filter(p => p.owner_name === profile?.name);
   const resolvedComplaints = complaints.filter(c => c.status === 'resolved').length;
   const pendingComplaints = complaints.filter(c => c.status === 'open' || c.status === 'in_review').length;
+
+  // Additional citizen statistics
+  const avgResolutionTime = complaints
+    .filter(c => c.status === 'resolved')
+    .reduce((sum, c) => {
+      const created = new Date(c.created_at);
+      const updated = new Date(c.updated_at);
+      return sum + Math.floor((updated - created) / (1000 * 60 * 60 * 24));
+    }, 0) / complaints.filter(c => c.status === 'resolved').length || 0;
+
+  const complaintsThisMonth = complaints.filter(c => {
+    const complaintDate = new Date(c.created_at);
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    return complaintDate.getMonth() === currentMonth && complaintDate.getFullYear() === currentYear;
+  }).length;
+
+  const hasOpenComplaints = complaints.some(c => c.status === 'open' || c.status === 'in_review');
+
+  // Filter complaints for citizen
+  const filteredComplaints = complaints.filter(complaint => {
+    if (filter !== 'all' && complaint.status !== filter) return false;
+    
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = 
+        complaint.description?.toLowerCase().includes(searchLower) ||
+        complaint.survey_no?.toLowerCase().includes(searchLower);
+      if (!matchesSearch) return false;
+    }
+    
+    return true;
+  });
 
   if (loading) {
     return (
@@ -127,7 +191,7 @@ export default function CitizenDashboard() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <div className="bg-panel rounded-lg p-6 border border-border">
             <div className="text-3xl font-bold text-primary mb-2">{myParcels.length}</div>
             <div className="text-muted">My Parcels</div>
@@ -146,20 +210,91 @@ export default function CitizenDashboard() {
           </div>
         </div>
 
+        {/* Additional Citizen Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="bg-panel rounded-lg p-6 border border-border">
+            <div className="text-3xl font-bold text-success mb-2">{complaintsThisMonth}</div>
+            <div className="text-muted">This Month</div>
+          </div>
+          <div className="bg-panel rounded-lg p-6 border border-border">
+            <div className="text-3xl font-bold text-orange-400 mb-2">{Math.round(avgResolutionTime)}d</div>
+            <div className="text-muted">Avg Resolution</div>
+          </div>
+          <div className="bg-panel rounded-lg p-6 border border-border">
+            <div className="text-3xl font-bold text-purple-400 mb-2">{myParcels.filter(p => p.status === 'encroached').length}</div>
+            <div className="text-muted">Encroached</div>
+          </div>
+          <div className="bg-panel rounded-lg p-6 border border-border">
+            <div className="text-3xl font-bold text-cyan-400 mb-2">{hasOpenComplaints ? 'Active' : 'Clear'}</div>
+            <div className="text-muted">Current Status</div>
+          </div>
+        </div>
+
         {/* Action Buttons */}
         <div className="flex flex-wrap gap-4 mb-8">
           <button 
             onClick={() => setShowComplaintForm(true)}
             className="px-6 py-3 bg-primary text-bg rounded-lg hover:bg-primary/90 transition-colors"
           >
-            <span className="mr-2">File New Complaint</span>
+            <span className="mr-2">📝 File New Complaint</span>
           </button>
           <Link to="/map" className="px-6 py-3 bg-info text-white rounded-lg hover:bg-info/90 transition-colors inline-block">
-            <span className="mr-2">View GIS Map</span>
+            <span className="mr-2">🗺️ View GIS Map</span>
           </Link>
           <Link to="/complaints" className="px-6 py-3 bg-panel text-white border border-border rounded-lg hover:bg-panel/90 transition-colors inline-block">
-            <span className="mr-2">My Complaints</span>
+            <span className="mr-2">📋 My Complaints</span>
           </Link>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="bg-panel rounded-lg p-6 border border-border mb-8">
+          <h3 className="text-xl font-semibold text-white mb-4">Quick Actions</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <button 
+              onClick={() => {
+                setFilter('open');
+                setSearchTerm('');
+              }}
+              className="p-4 bg-bg rounded-lg border border-border hover:border-primary transition-colors text-left"
+            >
+              <div className="text-2xl mb-2">🔍</div>
+              <div className="text-white font-medium">View Open</div>
+              <div className="text-xs text-muted">{pendingComplaints} pending</div>
+            </button>
+            
+            <button 
+              onClick={() => {
+                setFilter('resolved');
+                setSearchTerm('');
+              }}
+              className="p-4 bg-bg rounded-lg border border-border hover:border-primary transition-colors text-left"
+            >
+              <div className="text-2xl mb-2">✅</div>
+              <div className="text-white font-medium">View Resolved</div>
+              <div className="text-xs text-muted">{resolvedComplaints} completed</div>
+            </button>
+            
+            <button 
+              onClick={() => setShowComplaintForm(true)}
+              className="p-4 bg-bg rounded-lg border border-border hover:border-primary transition-colors text-left"
+            >
+              <div className="text-2xl mb-2">📸</div>
+              <div className="text-white font-medium">Quick Report</div>
+              <div className="text-xs text-muted">File with photo</div>
+            </button>
+            
+            <button 
+              onClick={() => {
+                setSearchTerm('');
+                setFilter('all');
+              }}
+              className="p-4 bg-bg rounded-lg border border-border hover:border-primary transition-colors text-left"
+            >
+              <div className="text-2xl mb-2">🔄</div>
+              <div className="text-white font-medium">Reset View</div>
+              <div className="text-xs text-muted">Clear filters</div>
+            </button>
+          </div>
         </div>
 
         {/* My Land Parcels */}
@@ -203,12 +338,41 @@ export default function CitizenDashboard() {
 
         {/* Recent Complaints */}
         <div className="bg-panel rounded-lg p-6 border border-border">
-          <h3 className="text-xl font-semibold text-white mb-4">My Complaints</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-semibold text-white">My Complaints</h3>
+            <Link to="/complaints" className="text-info hover:underline text-sm">
+              View All →
+            </Link>
+          </div>
+          
+          {/* Search and Filter */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <input
+              type="text"
+              placeholder="Search complaints..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="px-4 py-2 bg-bg border border-border rounded-lg text-white placeholder-muted focus:outline-none focus:border-primary"
+            />
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="px-4 py-2 bg-bg border border-border rounded-lg text-white focus:outline-none focus:border-primary"
+            >
+              <option value="all">All Status</option>
+              <option value="open">Open</option>
+              <option value="in_review">In Review</option>
+              <option value="resolved">Resolved</option>
+            </select>
+          </div>
+          
           <div className="space-y-4">
-            {complaints.length === 0 ? (
-              <p className="text-muted">No complaints filed yet.</p>
+            {filteredComplaints.length === 0 ? (
+              <p className="text-muted text-center py-8">
+                {complaints.length === 0 ? 'No complaints filed yet.' : 'No complaints match your search.'}
+              </p>
             ) : (
-              complaints.slice(0, 5).map(complaint => (
+              filteredComplaints.slice(0, 5).map(complaint => (
                 <div key={complaint.id} className="bg-bg rounded-lg p-4 border border-border">
                   <div className="flex items-center justify-between">
                     <div>
