@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import axios from '../api/axios';
+import { updateProfile } from 'firebase/auth';
+import { doc, updateDoc } from 'firebase/firestore';
+import { auth } from '../firebase/auth';
+import { db } from '../firebase/firestore';
 
 export default function Profile() {
   const { user, profile, logout } = useAuth();
@@ -44,9 +47,25 @@ export default function Profile() {
     setMessage('');
 
     try {
-      await axios.put(`/users/${user.uid}`, profileForm);
+      // Update display name in Firebase Auth
+      if (profileForm.name !== user.displayName) {
+        await updateProfile(user, {
+          displayName: profileForm.name
+        });
+      }
+
+      // Update user document in Firestore
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        name: profileForm.name,
+        phone: profileForm.phone,
+        aadhaar_last4: profileForm.aadhaar_last4,
+        updated_at: new Date().toISOString()
+      });
+
       setMessage('Profile updated successfully!');
     } catch (err) {
+      console.error('Profile update error:', err);
       setError('Failed to update profile. Please try again.');
     } finally {
       setLoading(false);
@@ -94,6 +113,7 @@ export default function Profile() {
   };
 
   if (!user || !profile) {
+    console.log('Profile: user or profile not loaded', { user: !!user, profile: !!profile });
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
         <div className="text-white">Loading profile...</div>
