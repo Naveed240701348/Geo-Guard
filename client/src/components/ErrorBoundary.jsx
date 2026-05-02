@@ -168,4 +168,4 @@ export function NotFound() {
   );
 }
 
-export { ErrorBoundary, NetworkError, NotFound };
+export { ErrorBoundary };
