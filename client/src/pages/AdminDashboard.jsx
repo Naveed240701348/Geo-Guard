@@ -130,6 +130,12 @@ export default function AdminDashboard() {
             <div className="text-muted">
               Admin Panel | Role: <span className="text-warning font-bold">{profile?.role || 'NOT SET'}</span>
             </div>
+            <Link
+              to="/profile"
+              className="px-4 py-2 bg-bg text-white border border-border rounded-lg hover:bg-bg/90 transition-colors text-sm"
+            >
+              Profile
+            </Link>
             <button
               onClick={logout}
               className="px-4 py-2 bg-danger text-white rounded-lg hover:bg-danger/90 transition-colors text-sm"

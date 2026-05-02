@@ -3,7 +3,8 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  onAuthStateChanged
+  onAuthStateChanged,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth } from '../firebase/auth';
@@ -58,12 +59,19 @@ export function AuthProvider({ children }) {
   const login    = (email, password) =>
     signInWithEmailAndPassword(auth, email, password);
   const logout   = () => signOut(auth);
+  const resetPassword = async (email) => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+    } catch (error) {
+      throw error;
+    }
+  };
   const getToken = async () => user ? await user.getIdToken() : null;
 
   return (
     <AuthContext.Provider value={{
       user, profile, loading,
-      register, login, logout, getToken
+      register, login, logout, resetPassword, getToken
     }}>
       {children}
     </AuthContext.Provider>

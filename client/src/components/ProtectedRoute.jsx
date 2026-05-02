@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import LoadingSpinner from './LoadingSpinner';
 
 export function ProtectedRoute({ children, requiredRole }) {
   const { user, profile, loading } = useAuth();
@@ -7,11 +8,7 @@ export function ProtectedRoute({ children, requiredRole }) {
   console.log('ProtectedRoute check:', { user: !!user, profile, requiredRole, loading });
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-bg flex items-center justify-center">
-        <div className="text-primary text-xl">Loading...</div>
-      </div>
-    );
+    return <LoadingSpinner size="large" text="Loading..." fullScreen />;
   }
 
   if (!user) {

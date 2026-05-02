@@ -156,6 +156,12 @@ export default function Login() {
           </Link>
         </div>
 
+        <div className="mt-4 text-center">
+          <Link to="/forgot-password" className="text-primary hover:underline text-sm">
+            Forgot your password?
+          </Link>
+        </div>
+
         {activeTab === 'admin' && (
           <div className="mt-4 p-3 bg-info/20 border border-info text-info text-sm rounded">
             <strong>Note:</strong> Admin access requires your user role to be set to "admin" in Firebase Firestore.
