@@ -42,6 +42,9 @@ export default function Register() {
         aadhaar_last4: formData.aadhaar_last4,
         password: formData.password
       });
+      
+      // Show success message and redirect
+      alert('Registration successful! Please check your email for a verification link before logging in.');
       navigate('/login');
     } catch (err) {
       console.error('Registration error:', err);

@@ -7,7 +7,7 @@ import { auth } from '../firebase/auth';
 import { db } from '../firebase/firestore';
 
 export default function Profile() {
-  const { user, profile, logout } = useAuth();
+  const { user, profile, logout, resendEmailVerification } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(false);
@@ -98,6 +98,21 @@ export default function Profile() {
       });
     } catch (err) {
       setError('Failed to change password. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setLoading(true);
+    setError('');
+    setMessage('');
+
+    try {
+      await resendEmailVerification();
+      setMessage('Email verification sent! Please check your inbox and spam folder.');
+    } catch (err) {
+      setError('Failed to send verification email. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -258,6 +273,15 @@ export default function Profile() {
                         <span className="text-white ml-2">
                           {user.emailVerified ? '✅ Yes' : '❌ No'}
                         </span>
+                        {!user.emailVerified && (
+                          <button
+                            onClick={handleResendVerification}
+                            disabled={loading}
+                            className="ml-2 px-3 py-1 bg-info text-bg text-xs rounded hover:bg-info/90 transition-colors disabled:opacity-50"
+                          >
+                            {loading ? 'Sending...' : 'Resend Verification'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

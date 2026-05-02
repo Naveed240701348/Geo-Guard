@@ -4,7 +4,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  sendEmailVerification
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth } from '../firebase/auth';
@@ -44,6 +45,10 @@ export function AuthProvider({ children }) {
         await createUserWithEmailAndPassword(auth, email, password);
       console.log('Firebase auth successful, user UID:', fbUser.uid);
       
+      // Send email verification
+      await sendEmailVerification(fbUser);
+      console.log('Email verification sent to:', email);
+      
       await setDoc(doc(db, 'users', fbUser.uid), {
         name, email, phone, aadhaar_last4,
         role: 'citizen',
@@ -66,12 +71,25 @@ export function AuthProvider({ children }) {
       throw error;
     }
   };
+
+  const resendEmailVerification = async () => {
+    try {
+      if (!user) {
+        throw new Error('No user is currently signed in');
+      }
+      await sendEmailVerification(user);
+      console.log('Email verification resent to:', user.email);
+    } catch (error) {
+      console.error('Error resending email verification:', error);
+      throw error;
+    }
+  };
   const getToken = async () => user ? await user.getIdToken() : null;
 
   return (
     <AuthContext.Provider value={{
       user, profile, loading,
-      register, login, logout, resetPassword, getToken
+      register, login, logout, resetPassword, resendEmailVerification, getToken
     }}>
       {children}
     </AuthContext.Provider>
